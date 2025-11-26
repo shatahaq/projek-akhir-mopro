@@ -151,14 +151,141 @@ class FirebaseService {
     try { await _firestore.collection('users').doc(id).delete(); } catch (e) {}
   }
 
+  static Future<Map<String, dynamic>?> getUserReview(String productId, String userId) async {
+    try {
+      QuerySnapshot snapshot = await _firestore
+          .collection('products')
+          .doc(productId)
+          .collection('reviews')
+          .where('user_id', isEqualTo: userId)
+          .limit(1)
+          .get();
+      
+      if (snapshot.docs.isNotEmpty) {
+        var data = snapshot.docs.first.data() as Map<String, dynamic>;
+        data['id'] = snapshot.docs.first.id;
+        return data;
+      }
+      return null;
+    } catch (e) {
+      // ignore: avoid_print
+      print(e);
+      return null;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getProductReviews(String productId) async {
+    try {
+      QuerySnapshot snapshot = await _firestore
+          .collection('products')
+          .doc(productId)
+          .collection('reviews')
+          .orderBy('created_at', descending: true)
+          .get();
+      
+      return snapshot.docs.map((doc) {
+        var data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+    } catch (e) {
+      // ignore: avoid_print
+      print(e);
+      return [];
+    }
+  }
+
   static Future<void> addReview(String productId, String userId, String userName, double rating, String comment) async {
     try {
-       await _firestore.collection('products').doc(productId).collection('reviews').add({'user_id': userId, 'user_name': userName, 'rating': rating, 'comment': comment, 'created_at': FieldValue.serverTimestamp()});
-       DocumentSnapshot productDoc = await _firestore.collection('products').doc(productId).get();
-       double currentRating = (productDoc['rating'] ?? 0).toDouble();
-       int currentReviews = productDoc['reviews'] ?? 0;
-       double newRating = ((currentRating * currentReviews) + rating) / (currentReviews + 1);
-       await _firestore.collection('products').doc(productId).update({'rating': newRating, 'reviews': currentReviews + 1});
+      // Check if user already has a review
+      Map<String, dynamic>? existingReview = await getUserReview(productId, userId);
+      
+      DocumentSnapshot productDoc = await _firestore.collection('products').doc(productId).get();
+      double currentRating = (productDoc['rating'] ?? 0).toDouble();
+      int currentReviews = productDoc['reviews'] ?? 0;
+      
+      if (existingReview != null) {
+        // Update existing review
+        String reviewId = existingReview['id'];
+        double oldRating = (existingReview['rating'] ?? 0).toDouble();
+        
+        await _firestore
+            .collection('products')
+            .doc(productId)
+            .collection('reviews')
+            .doc(reviewId)
+            .update({
+          'rating': rating,
+          'comment': comment,
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+        
+        // Recalculate rating (remove old rating, add new rating)
+        double newRating = currentReviews > 0
+            ? ((currentRating * currentReviews) - oldRating + rating) / currentReviews
+            : rating;
+        
+        await _firestore.collection('products').doc(productId).update({'rating': newRating});
+      } else {
+        // Add new review
+        await _firestore.collection('products').doc(productId).collection('reviews').add({
+          'user_id': userId,
+          'user_name': userName,
+          'rating': rating,
+          'comment': comment,
+          'created_at': FieldValue.serverTimestamp()
+        });
+        
+        // Calculate new average rating
+        double newRating = ((currentRating * currentReviews) + rating) / (currentReviews + 1);
+        await _firestore.collection('products').doc(productId).update({
+          'rating': newRating,
+          'reviews': currentReviews + 1
+        });
+      }
+    } catch (e) {
+      // ignore: avoid_print
+      print(e);
+    }
+  }
+
+  static Future<void> deleteReview(String productId, String userId) async {
+    try {
+      // Get the review to delete
+      Map<String, dynamic>? existingReview = await getUserReview(productId, userId);
+      
+      if (existingReview != null) {
+        String reviewId = existingReview['id'];
+        double oldRating = (existingReview['rating'] ?? 0).toDouble();
+        
+        // Delete the review
+        await _firestore
+            .collection('products')
+            .doc(productId)
+            .collection('reviews')
+            .doc(reviewId)
+            .delete();
+        
+        // Update product rating and review count
+        DocumentSnapshot productDoc = await _firestore.collection('products').doc(productId).get();
+        double currentRating = (productDoc['rating'] ?? 0).toDouble();
+        int currentReviews = productDoc['reviews'] ?? 0;
+        
+        if (currentReviews > 1) {
+          // Recalculate rating without the deleted review
+          double newRating = ((currentRating * currentReviews) - oldRating) / (currentReviews - 1);
+          await _firestore.collection('products').doc(productId).update({
+            'rating': newRating,
+            'reviews': currentReviews - 1
+          });
+        } else {
+          // No reviews left, reset to 0
+          await _firestore.collection('products').doc(productId).update({
+            'rating': 0.0,
+            'reviews': 0
+          });
+        }
+      }
     } catch (e) {
       // ignore: avoid_print
       print(e);

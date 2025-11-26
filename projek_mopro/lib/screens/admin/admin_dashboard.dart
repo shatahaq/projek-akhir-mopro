@@ -144,38 +144,121 @@ class _AdminOrderListState extends State<AdminOrderList> {
               final x = _o[i];
               return Card(
                 margin: const EdgeInsets.all(10),
+                elevation: 3,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: ExpansionTile(
-                  title: Text("Order #${x.id.substring(0, 8)}"),
-                  subtitle: Text(
-                      "${x.buyerName} - ${formatRupiah(x.total)}\nStatus: ${x.status}"),
+                  title: Text(
+                    "Order #${x.id.substring(0, 8)}",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text(
+                        x.buyerName,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        "Total: ${formatRupiah(x.total)}",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
                   children: [
+                    const Divider(),
                     ...x.items.map((it) => ListTile(
+                          dense: true,
                           title: Text(it['product_name']),
-                          subtitle: Text("${it['quantity']}x"),
-                        )),
-                    Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          ElevatedButton(
-                            onPressed: () async {
-                              await FirebaseService.updateOrderStatus(
-                                  x.id, 'shipped');
-                              _ref();
-                            },
-                            child: const Text("Kirim"),
+                          trailing: Text(
+                            "${it['quantity']}x",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green),
-                            onPressed: () async {
-                              await FirebaseService.updateOrderStatus(
-                                  x.id, 'completed');
-                              _ref();
-                            },
-                            child: const Text("Selesai"),
-                          )
+                        )),
+                    const Divider(),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Status Pesanan:",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: _getStatusColor(x.status).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: _getStatusColor(x.status),
+                                width: 1,
+                              ),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: x.status,
+                                isExpanded: true,
+                                icon: const Icon(Icons.arrow_drop_down),
+                                style: TextStyle(
+                                  color: _getStatusColor(x.status),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                                dropdownColor: Colors.white,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'pending',
+                                    child: Text('PENDING'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'packed',
+                                    child: Text('PACKED'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'shipped',
+                                    child: Text('SHIPPED'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'completed',
+                                    child: Text('DELIVERED'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'cancelled',
+                                    child: Text('CANCELLED'),
+                                  ),
+                                ],
+                                onChanged: (newStatus) async {
+                                  if (newStatus != null) {
+                                    await FirebaseService.updateOrderStatus(
+                                        x.id, newStatus);
+                                    _ref();
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     )
@@ -184,5 +267,22 @@ class _AdminOrderListState extends State<AdminOrderList> {
               );
             },
           );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange;
+      case 'packed':
+        return Colors.blue;
+      case 'shipped':
+        return Colors.purple;
+      case 'completed':
+        return Colors.green;
+      case 'cancelled':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 }

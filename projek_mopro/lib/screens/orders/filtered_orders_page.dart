@@ -6,29 +6,44 @@ import '../../utils/constants.dart';
 import '../../utils/formatters.dart';
 import '../../widgets/snackbar_helper.dart';
 
-class OrdersPage extends StatefulWidget {
+class FilteredOrdersPage extends StatefulWidget {
   final UserData user;
-  const OrdersPage({super.key, required this.user});
+  final String filterStatus;
+  final String filterTitle;
+  
+  const FilteredOrdersPage({
+    super.key,
+    required this.user,
+    required this.filterStatus,
+    required this.filterTitle,
+  });
+
   @override
-  State<OrdersPage> createState() => _OrdersPageState();
+  State<FilteredOrdersPage> createState() => _FilteredOrdersPageState();
 }
 
-class _OrdersPageState extends State<OrdersPage> {
-  List<OrderModel> _o = [];
-  bool _l = true;
+class _FilteredOrdersPageState extends State<FilteredOrdersPage> {
+  List<OrderModel> _orders = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _ref();
+    _loadOrders();
   }
 
-  void _ref() async {
-    setState(() => _l = true);
-    var d = await FirebaseService.getOrders(userId: widget.user.id);
+  void _loadOrders() async {
+    setState(() => _loading = true);
+    var allOrders = await FirebaseService.getOrders(userId: widget.user.id);
+    
+    // Filter orders based on status
+    List<OrderModel> filtered = allOrders.where((order) {
+      return order.status == widget.filterStatus;
+    }).toList();
+    
     setState(() {
-      _o = d;
-      _l = false;
+      _orders = filtered;
+      _loading = false;
     });
   }
 
@@ -169,6 +184,7 @@ class _OrdersPageState extends State<OrdersPage> {
                   context, 
                   isEditing ? "Ulasan berhasil diperbarui!" : "Terima kasih!",
                 );
+                _loadOrders(); // Refresh
               },
               child: Text(isEditing ? "Update" : "Kirim"),
             )
@@ -232,23 +248,42 @@ class _OrdersPageState extends State<OrdersPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Lacak Pesanan"),
+        title: Text(widget.filterTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _ref,
+            onPressed: _loadOrders,
           )
         ],
       ),
-      body: _l
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _o.isEmpty
-              ? const Center(child: Text("Belum ada pesanan"))
+          : _orders.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.inbox_outlined,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "Tidak ada pesanan",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
               : ListView.builder(
                   padding: const EdgeInsets.all(15),
-                  itemCount: _o.length,
+                  itemCount: _orders.length,
                   itemBuilder: (c, i) {
-                    final x = _o[i];
+                    final x = _orders[i];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
@@ -324,7 +359,6 @@ class _OrdersPageState extends State<OrdersPage> {
                                 if (x.status == 'completed')
                                   TextButton(
                                     onPressed: () {
-                                      // Review logic for first item for simplicity, or show dialog to pick item
                                       if (x.items.isNotEmpty) {
                                         _rate(x.items[0]['product_id'],
                                             x.items[0]['product_name']);
